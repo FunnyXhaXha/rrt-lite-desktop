@@ -8,7 +8,7 @@ permissions:
   contents: write
 concurrency:
   group: windows-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-latest
@@ -37,6 +37,20 @@ jobs:
         run: ./scripts/package-windows.ps1
       - name: Test packaged native application with Internet blocked
         run: node scripts/test-native.mjs
+      - name: Install offline package and test installed application
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path artifacts/RRT-Lite-Setup.exe).Path
+          $destination = Join-Path $env:RUNNER_TEMP 'RRT-Lite-Installed'
+          New-NetFirewallRule -DisplayName 'RRT-Lite-CI-Installer' -Direction Outbound -Program $setup -Action Block | Out-Null
+          try {
+            $process = Start-Process -FilePath $setup -ArgumentList '/S',"/D=$destination" -PassThru -Wait
+            if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          } finally {
+            Get-NetFirewallRule -DisplayName 'RRT-Lite-CI-Installer' | Remove-NetFirewallRule
+          }
+          node scripts/test-native.mjs "$destination/rrt-lite.exe" artifacts/qa-installed
+          if ($LASTEXITCODE -ne 0) { throw 'Installed application test failed' }
       - name: Save build artifacts and verification
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,6 +62,7 @@ jobs:
             artifacts/SHA256SUMS.txt
             artifacts/runtime-provenance.json
             artifacts/qa/
+            artifacts/qa-installed/
             src-tauri/Cargo.lock
           if-no-files-found: warn
       - name: Publish v0.1.0 after verification
