@@ -2,8 +2,8 @@ $ErrorActionPreference = 'Stop'
 # Build-time download only. No download or updater exists in the shipped application.
 $version = '154.0.4258.37'
 $url = 'https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/b82d47e8-d146-4563-94d1-3a3176b25c0a/Microsoft.WebView2.FixedVersionRuntime.154.0.4258.37.x64.cab'
-$cab = Join-Path $env:RUNNER_TEMP 'rrt-webview2.cab'
-if (!$env:RUNNER_TEMP) { $cab = Join-Path $env:TEMP 'rrt-webview2.cab' }
+$temporaryRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
+$cab = Join-Path $temporaryRoot 'rrt-webview2.cab'
 Invoke-WebRequest -Uri $url -OutFile $cab
 $hash = (Get-FileHash $cab -Algorithm SHA256).Hash
 $stage = Join-Path ([IO.Path]::GetDirectoryName($cab)) 'rrt-webview-extract'
