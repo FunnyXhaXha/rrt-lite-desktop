@@ -1,0 +1,1 @@
+export default "Redemption is the execution and realization of a decision through the game system, producing consequences and a changed resource state. Trace Decision → execution → system consequence → Resourceₜ₊₁. Explain how Resourceₜ₊₁ enables, constrains, or changes the next decision. Never stop at the immediate outcome.";

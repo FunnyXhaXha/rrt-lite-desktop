@@ -1,0 +1,1 @@
+export default "Decision is a meaningful commitment among alternatives under a resource condition. Distinguish Action from Decision: clicking, attacking, moving, shooting, or selecting a menu button is not automatically a decision. Identify alternatives, relevant resource conditions, and meaningful commitment or sacrifice.";

@@ -1,0 +1,1 @@
+export default "Gameplay Efficiency: How do players use, preserve, exchange, risk, or transform resources to advance the gameplay goal? Explain how the system organizes and rewards effective play. Greater efficiency is not automatically better design.";

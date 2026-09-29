@@ -1,0 +1,65 @@
+name: Windows offline build
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Prepare bundled fixed WebView2 runtime
+        shell: pwsh
+        run: ./scripts/prepare-runtime.ps1
+      - name: Build Windows installer
+        run: npm run desktop:build
+      - name: Package portable build
+        shell: pwsh
+        run: ./scripts/package-windows.ps1
+      - name: Test packaged native application with Internet blocked
+        run: node scripts/test-native.mjs
+      - name: Save build artifacts and verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RRT-Lite-Windows-${{ github.sha }}
+          path: |
+            artifacts/RRT-Lite-Setup.exe
+            artifacts/RRT-Lite-Windows-Portable.zip
+            artifacts/SHA256SUMS.txt
+            artifacts/runtime-provenance.json
+            artifacts/qa/
+            src-tauri/Cargo.lock
+          if-no-files-found: warn
+      - name: Publish v0.1.0 after verification
+        if: success()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v0.1.0 --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'Release v0.1.0 already exists. Build artifacts are retained; existing release not overwritten.'
+            exit 0
+          }
+          gh release create v0.1.0 artifacts/RRT-Lite-Setup.exe artifacts/RRT-Lite-Windows-Portable.zip artifacts/SHA256SUMS.txt artifacts/runtime-provenance.json artifacts/qa/native-test-report.json --title 'RRT Lite v0.1.0' --notes-file RELEASE-NOTES.md --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

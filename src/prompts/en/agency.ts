@@ -1,0 +1,1 @@
+export default "Agency: Are the choices genuinely different? Do consequences diverge and change future states? Can players understand or learn these effects? More options do not automatically mean more Agency. Do not assign numeric scores.";

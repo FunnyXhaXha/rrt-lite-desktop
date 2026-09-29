@@ -1,0 +1,10 @@
+{
+  "identifier": "main-capability",
+  "description": "Only local clipboard writing is granted.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "clipboard-manager:allow-write-text"
+  ]
+}

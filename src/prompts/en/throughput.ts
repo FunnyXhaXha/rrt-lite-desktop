@@ -1,0 +1,1 @@
+export default "Throughput: Meaningful Resource–Decision–Redemption cycles producing new decision conditions. Do these cycles continue to create meaningful new conditions, or stall in repetition? This is not APM, input speed, click count, or combat frequency. Do not assign numeric scores.";

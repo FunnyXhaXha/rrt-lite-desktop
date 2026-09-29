@@ -1,0 +1,20 @@
+// @vitest-environment jsdom
+import React from 'react';
+import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
+import {render,screen,fireEvent,cleanup,waitFor} from '@testing-library/react';
+import {App} from '../src/App';
+import {generatePrompt,focuses,targets,toggleFocus} from '../src/prompts';
+import {initialLanguage} from '../src/preferences';
+const clipboard=vi.hoisted(()=>vi.fn().mockResolvedValue(undefined));
+vi.mock('@tauri-apps/plugin-clipboard-manager',()=>({writeText:clipboard}));
+const zh='我正在设计一个玩家经营商店，通过交易不同物品影响顾客未来状态的游戏。';
+const en='I am designing a survival game where ammunition, time, and information affect whether the player fights or avoids enemies.';
+beforeEach(()=>{Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:vi.fn()});Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:vi.fn()});localStorage.clear();clipboard.mockClear();vi.stubGlobal('fetch',vi.fn(()=>{throw Error('Network prohibited');}));});
+afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+describe('RRT Lite',()=>{
+ it('covers both languages and all 80 target/focus combinations',()=>{for(const language of ['zh','en'] as const)for(const target of targets)for(const focus of ['full',...focuses] as const){const context=language==='zh'?zh:en;const result=generatePrompt({language,target,focus:[focus],context});expect(result).toContain(JSON.stringify(context));expect(result).toContain('ₜ₊₁');expect(result).toContain('9.');expect(result).toContain(language==='zh'?'推断':'Inferred');}});
+ it('rejects empty material and keeps Full exclusive',()=>{expect(()=>generatePrompt({language:'en',target:'game',focus:['full'],context:'  '})).toThrow();expect(toggleFocus(['full'],'agency')).toEqual(['agency']);expect(toggleFocus(['agency'],'agency')).toEqual(['full']);expect(toggleFocus(['agency','throughput'],'full')).toEqual(['full']);});
+ it('uses system language until a valid local preference exists',()=>{vi.spyOn(navigator,'language','get').mockReturnValue('zh-CN');expect(initialLanguage()).toBe('zh');localStorage.setItem('rrt-lite.language','en');expect(initialLanguage()).toBe('en');vi.restoreAllMocks();});
+ it('generates, switches language without losing text, copies, clears, and saves no input',async()=>{render(<App/>);fireEvent.click(screen.getByRole('button',{name:'中文'}));const input=screen.getByLabelText('描述或粘贴你的游戏 / 系统') as HTMLTextAreaElement;fireEvent.change(input,{target:{value:zh}});fireEvent.click(screen.getByRole('button',{name:'生成 RRT Prompt'}));expect((screen.getByLabelText('生成的 Prompt') as HTMLTextAreaElement).value).toContain('核心资源结构');fireEvent.click(screen.getByRole('button',{name:'EN'}));expect(input.value).toBe(zh);expect((screen.getByLabelText('Generated Prompt') as HTMLTextAreaElement).value).toContain('Core Resource Structure');fireEvent.click(screen.getByRole('button',{name:'中文'}));expect(input.value).toBe(zh);fireEvent.click(screen.getByRole('button',{name:'复制 Prompt'}));await waitFor(()=>expect(clipboard).toHaveBeenCalledTimes(1));expect(clipboard.mock.calls[0][0]).toContain(zh);fireEvent.change(screen.getByLabelText('主题'),{target:{value:'dark'}});fireEvent.click(screen.getByRole('button',{name:'清空'}));expect(input.value).toBe('');expect(screen.queryByLabelText('生成的 Prompt')).toBeNull();expect(localStorage.getItem('rrt-lite.language')).toBe('zh');expect(localStorage.getItem('rrt-lite.theme')).toBe('dark');expect(Object.keys(localStorage).sort()).toEqual(['rrt-lite.language','rrt-lite.theme']);expect(fetch).not.toHaveBeenCalled();});
+ it('generates English sample and invalidates stale output after an edit',()=>{render(<App/>);fireEvent.click(screen.getByRole('button',{name:'EN'}));const input=screen.getByLabelText('Describe or paste your game / system');fireEvent.change(input,{target:{value:en}});fireEvent.click(screen.getByRole('button',{name:'Generate RRT Prompt'}));expect((screen.getByLabelText('Generated Prompt') as HTMLTextAreaElement).value).toContain(en);fireEvent.change(input,{target:{value:'Changed'}});expect(screen.queryByLabelText('Generated Prompt')).toBeNull();});
+});

@@ -1,0 +1,1 @@
+export default "Narrative Completion: Briefly examine whether decisions and actual consequences answer, change, interrupt, or complicate expectations about character, identity, relationships, plot, or thematic meaning. Mark missing narrative context rather than inventing it. Keep this simple.";
