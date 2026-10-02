@@ -2,20 +2,36 @@
 import { chromium } from 'playwright';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
+import net from 'node:net';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 const exe=path.resolve(process.argv[2] || 'artifacts/portable/RRT Lite/RRT-Lite.exe');
 const qaDir=process.argv[3] || 'artifacts/qa';
-const runtime=path.join(path.dirname(exe),'WebView2','msedgewebview2.exe');
-const rules=['RRT-Lite-CI-App','RRT-Lite-CI-Renderer'];
+const reportName=process.argv[4] || 'native-test-report.json';
 const ps=(script)=>execFileSync('powershell.exe',['-NoProfile','-Command',script],{encoding:'utf8'});
-const quote=s=>"'"+s.replaceAll("'","''")+"'";
-let app,browser;
-const report={startup:false,chinese:false,english:false,languagePreservation:false,nativeClipboard:false,clear:false,preferencePersistence:false,noInputPersistence:false,externalRequests:[],offline:'Outbound Internet blocked for app and bundled renderer before launch'};
+const listen=(server)=>new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',()=>resolve(server.address().port));});
+const close=(server)=>new Promise(resolve=>server.close(resolve));
+const reservePort=async()=>{const server=net.createServer();const port=await listen(server);await close(server);return port;};
+let app,browser,denyProxy;
+const report={startup:false,chinese:false,english:false,languagePreservation:false,nativeClipboard:false,clear:false,preferencePersistence:false,noInputPersistence:false,externalRequests:[],proxyAttempts:[],networkIsolation:'WebView2 forced through a local deny proxy; no OS firewall or network settings changed'};
 try{
- for(const [i,p] of [exe,runtime].entries())ps(`New-NetFirewallRule -DisplayName '${rules[i]}' -Direction Outbound -Program ${quote(p)} -Action Block -RemoteAddress '0.0.0.0-126.255.255.255','128.0.0.0-255.255.255.255','::/0' | Out-Null`);
- app=spawn(exe,[],{env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1'},stdio:'ignore'});
- for(let i=0;i<60;i++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:9222');break;}catch{await new Promise(r=>setTimeout(r,1000));}}
+ denyProxy=net.createServer(socket=>{socket.once('data',data=>report.proxyAttempts.push(data.toString('utf8',0,256).split(/\r?\n/,1)[0]));socket.destroy();});
+ const proxyPort=await listen(denyProxy);
+ const debugPort=await reservePort();
+ const browserArguments=[
+  `--remote-debugging-port=${debugPort}`,
+  '--remote-debugging-address=127.0.0.1',
+  `--proxy-server=http://127.0.0.1:${proxyPort}`,
+  '--proxy-bypass-list=<-loopback>',
+  '--disable-quic',
+  '--disable-background-networking',
+  '--disable-component-update',
+  '--disable-domain-reliability',
+  '--disable-breakpad',
+  '--no-first-run'
+ ].join(' ');
+ app=spawn(exe,[],{env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:browserArguments},stdio:'ignore'});
+ for(let i=0;i<60;i++){try{browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);break;}catch{await new Promise(r=>setTimeout(r,1000));}}
  if(!browser)throw Error('Native WebView2 did not start');
  const context=browser.contexts()[0];
  const page=context.pages()[0] || await context.waitForEvent('page');
@@ -39,11 +55,13 @@ try{
  await input.fill('PRIVATE_TEXT_MUST_NOT_PERSIST');
  const keys=await page.evaluate(()=>Object.keys(localStorage));assert.deepEqual(keys.sort(),['rrt-lite.language','rrt-lite.theme']);report.noInputPersistence=true;
  await page.reload();await page.waitForSelector('#context');assert.equal(await input.inputValue(),'');assert.equal(await page.getByLabel('Theme',{exact:true}).inputValue(),'light');report.preferencePersistence=true;
+ await new Promise(r=>setTimeout(r,1000));
  assert.deepEqual(report.externalRequests,[]);
+ assert.deepEqual(report.proxyAttempts,[]);
  console.log(JSON.stringify(report,null,2));
 }catch(error){report.error=String(error);throw error;}finally{
- await mkdir(qaDir,{recursive:true});await writeFile(path.join(qaDir,'native-test-report.json'),JSON.stringify(report,null,2));
+ await mkdir(qaDir,{recursive:true});await writeFile(path.join(qaDir,reportName),JSON.stringify(report,null,2));
  if(browser)await browser.close().catch(()=>{});
  if(app?.pid)try{execFileSync('taskkill',['/PID',String(app.pid),'/T','/F']);}catch{}
- for(const rule of rules)try{ps(`Get-NetFirewallRule -DisplayName '${rule}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule`);}catch{}
+ if(denyProxy)await close(denyProxy).catch(()=>{});
 }

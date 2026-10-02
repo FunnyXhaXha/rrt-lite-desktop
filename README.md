@@ -23,7 +23,7 @@ The application does not require a developer environment, account, API key, brow
 - Only language and theme are stored locally. Pasted design text and generated prompts stay in memory and are not saved by the app.
 - Copy is an explicit local clipboard operation. Windows clipboard history/sync and any external AI you choose are controlled by your OS/other software, not by this application.
 - A restrictive Content Security Policy allows only local assets and Tauri's local IPC for clipboard writing. No business-logic network calls exist.
-- Fixed WebView2 avoids an updater service; background-networking and component-update flags are disabled. The native release test blocks outbound Internet for the app and its renderer before launching.
+- Fixed WebView2 avoids an updater service; background-networking and component-update flags are disabled. Native release tests force the renderer through a local deny proxy, fail on any attempted external request, and do not alter the host firewall or network settings.
 - Dependencies and the fixed renderer are downloaded **at build time**, not when someone runs the application.
 
 ## RRT Lite public boundary
@@ -52,9 +52,9 @@ npm run desktop:build
 node scripts/test-native.mjs
 ```
 
-The native test requires an administrative Windows CI/developer environment for temporary, app-scoped outbound firewall rules. It removes its own test rules afterward. End users do not need those privileges to run RRT Lite.
+The native test does not require administrator privileges or change Windows Firewall. It launches WebView2 through a process-scoped local deny proxy, exercises the packaged UI and native clipboard, and fails if the page or renderer attempts an external request.
 
-`main` pushes and `v*` tags trigger the Windows build. Successful initial verification publishes `v0.1.0`. Later builds retain artifacts and never overwrite an existing release. For a new release version, update app/package/Cargo versions and the release step.
+`main` pushes and `v*` tags trigger the Windows build. Normal pushes and manual validation runs retain artifacts without publishing. A `v0.1.0` tag or an explicit `publish_release` workflow input publishes `v0.1.0` only after every verification step passes; an existing release is never overwritten. For a new release version, update app/package/Cargo versions and the release step.
 
 ## Edit the prompts
 
