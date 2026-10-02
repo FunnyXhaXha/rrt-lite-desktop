@@ -137,6 +137,9 @@ try {
     app.stdout.on('data', capture);
     app.stderr.on('data', capture);
     report.startupDurationMs = await waitForWindow(app);
+    // A native window handle can exist before the bundled WebView has finished
+    // loading and can reliably receive synthesized keyboard input on a cold start.
+    await delay(2500);
     return app;
   };
 
@@ -162,7 +165,7 @@ try {
   sendKeys(app.pid, '{TAB}'); sendKeys(app.pid, '{ENTER}', 600);
   let output = getClipboardText();
   assert.ok(output.includes(en));
-  assert.ok(output.includes('Core Resource Structure'));
+  assert.ok(output.includes('Core Resource Structure'), `English generated prompt was not copied (clipboard prefix: ${JSON.stringify(output.slice(0, 200))})`);
   report.english = true;
   report.nativeClipboard = true;
   screenshot(app.pid, path.join(qaDir, 'english.png'));
@@ -186,7 +189,7 @@ try {
   sendKeys(app.pid, '{TAB}'); sendKeys(app.pid, '{ENTER}', 600);
   output = getClipboardText();
   assert.ok(output.includes(zh));
-  assert.ok(output.includes('核心资源结构'));
+  assert.ok(output.includes('核心资源结构'), `Chinese generated prompt was not copied (clipboard prefix: ${JSON.stringify(output.slice(0, 200))})`);
   report.chinese = true;
   sendKeys(app.pid, '{TAB 2}'); sendKeys(app.pid, '{END}');
   screenshot(app.pid, path.join(qaDir, 'chinese-dark.png'));
