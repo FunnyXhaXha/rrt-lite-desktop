@@ -4,7 +4,19 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish the verified v0.1.0 release'
+        required: true
+        default: false
+        type: boolean
+      artifact_run_id:
+        description: 'Optional prior run ID whose packages should be retested without rebuilding'
+        required: false
+        default: ''
+        type: string
 permissions:
+  actions: read
   contents: write
 concurrency:
   group: windows-release-${{ github.ref }}
@@ -21,35 +33,55 @@ jobs:
         with:
           node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
+        if: inputs.artifact_run_id == ''
       - uses: Swatinem/rust-cache@v2
+        if: inputs.artifact_run_id == ''
         with:
           workspaces: src-tauri -> target
       - run: npm ci
       - run: npm test
+        if: inputs.artifact_run_id == ''
       - run: npm run build
+        if: inputs.artifact_run_id == ''
       - name: Prepare bundled fixed WebView2 runtime
+        if: inputs.artifact_run_id == ''
         shell: pwsh
         run: ./scripts/prepare-runtime.ps1
       - name: Build Windows installer
+        if: inputs.artifact_run_id == ''
         run: npm run desktop:build
       - name: Package portable build
+        if: inputs.artifact_run_id == ''
         shell: pwsh
         run: ./scripts/package-windows.ps1
-      - name: Test packaged native application with Internet blocked
-        run: node scripts/test-native.mjs
+      - name: Reuse packages from prior run
+        if: inputs.artifact_run_id != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id }}
+        run: |
+          $download = Join-Path $env:RUNNER_TEMP 'rrt-prior-artifacts'
+          gh run download $env:ARTIFACT_RUN_ID --repo $env:GITHUB_REPOSITORY --dir $download
+          $setup = Get-ChildItem $download -Recurse -Filter 'RRT-Lite-Setup.exe' | Select-Object -First 1
+          $portable = Get-ChildItem $download -Recurse -Filter 'RRT-Lite-Windows-Portable.zip' | Select-Object -First 1
+          if (!$setup -or !$portable) { throw 'Prior run does not contain both Windows packages' }
+          New-Item -ItemType Directory artifacts -Force | Out-Null
+          Copy-Item $setup.FullName artifacts/RRT-Lite-Setup.exe
+          Copy-Item $portable.FullName artifacts/RRT-Lite-Windows-Portable.zip
+          Get-ChildItem $download -Recurse -Filter 'SHA256SUMS.txt' | Select-Object -First 1 | Copy-Item -Destination artifacts/SHA256SUMS.txt
+          Get-ChildItem $download -Recurse -Filter 'runtime-provenance.json' | Select-Object -First 1 | Copy-Item -Destination artifacts/runtime-provenance.json
+          Expand-Archive artifacts/RRT-Lite-Windows-Portable.zip -DestinationPath artifacts/portable -Force
+      - name: Test portable application through deny proxy
+        run: node scripts/test-native.mjs "artifacts/portable/RRT Lite/RRT-Lite.exe" artifacts/qa portable-native-test-report.json
       - name: Install offline package and test installed application
         shell: pwsh
         run: |
           $setup = (Resolve-Path artifacts/RRT-Lite-Setup.exe).Path
           $destination = Join-Path $env:RUNNER_TEMP 'RRT-Lite-Installed'
-          New-NetFirewallRule -DisplayName 'RRT-Lite-CI-Installer' -Direction Outbound -Program $setup -Action Block | Out-Null
-          try {
-            $process = Start-Process -FilePath $setup -ArgumentList '/S',"/D=$destination" -PassThru -Wait
-            if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
-          } finally {
-            Get-NetFirewallRule -DisplayName 'RRT-Lite-CI-Installer' | Remove-NetFirewallRule
-          }
-          node scripts/test-native.mjs "$destination/rrt-lite.exe" artifacts/qa-installed
+          $process = Start-Process -FilePath $setup -ArgumentList '/S',"/D=$destination" -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          node scripts/test-native.mjs "$destination/rrt-lite.exe" artifacts/qa-installed installed-native-test-report.json
           if ($LASTEXITCODE -ne 0) { throw 'Installed application test failed' }
       - name: Save build artifacts and verification
         if: always()
@@ -65,8 +97,8 @@ jobs:
             artifacts/qa-installed/
             src-tauri/Cargo.lock
           if-no-files-found: warn
-      - name: Publish v0.1.0 after verification
-        if: success()
+      - name: Publish v0.1.0 after explicit release request
+        if: success() && inputs.artifact_run_id == '' && ((github.event_name == 'push' && github.ref == 'refs/tags/v0.1.0') || (github.event_name == 'workflow_dispatch' && inputs.publish_release))
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,5 +108,5 @@ jobs:
             Write-Host 'Release v0.1.0 already exists. Build artifacts are retained; existing release not overwritten.'
             exit 0
           }
-          gh release create v0.1.0 artifacts/RRT-Lite-Setup.exe artifacts/RRT-Lite-Windows-Portable.zip artifacts/SHA256SUMS.txt artifacts/runtime-provenance.json artifacts/qa/native-test-report.json --title 'RRT Lite v0.1.0' --notes-file RELEASE-NOTES.md --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
+          gh release create v0.1.0 artifacts/RRT-Lite-Setup.exe artifacts/RRT-Lite-Windows-Portable.zip artifacts/SHA256SUMS.txt artifacts/runtime-provenance.json artifacts/qa/portable-native-test-report.json artifacts/qa-installed/installed-native-test-report.json --title 'RRT Lite v0.1.0' --notes-file RELEASE-NOTES.md --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

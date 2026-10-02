@@ -11,6 +11,6 @@ RRT Lite v0.1.0 — Windows x64
 
 Extract the entire portable ZIP before opening RRT-Lite.exe. This release is unsigned.
 
-Validation: the release pipeline must pass bilingual tests and packaged Windows native tests with Internet blocked for the app and renderer before publication. See native-test-report.json.
+Validation: the release pipeline must pass bilingual tests and keyboard-driven native tests of both portable and installed packages. The same release binary is configured with a process-scoped deny proxy; tests fail on any attempted proxy connection and do not enable remote debugging or change Windows Firewall. See portable-native-test-report.json and installed-native-test-report.json.
 
 Author: Xilin Xu · Discord: badgermunsta
