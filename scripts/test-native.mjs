@@ -32,10 +32,12 @@ try{
   '--disable-breakpad',
   '--no-first-run'
  ].join(' ');
+ const launchStarted=Date.now();
  app=spawn(exe,[],{env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:browserArguments,WEBVIEW2_USER_DATA_FOLDER:userData},stdio:['ignore','pipe','pipe']});
  const capture=data=>report.appOutput.push(data.toString('utf8').slice(0,2000));
  app.stdout.on('data',capture);app.stderr.on('data',capture);
- for(let i=0;i<60;i++){if(app.exitCode!==null)break;try{browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);break;}catch{await new Promise(r=>setTimeout(r,1000));}}
+ for(let i=0;i<180;i++){if(app.exitCode!==null)break;try{browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);break;}catch{await new Promise(r=>setTimeout(r,1000));}}
+ report.startupDurationMs=Date.now()-launchStarted;
  if(!browser)throw Error(`Native WebView2 did not start (exitCode=${app.exitCode}, signal=${app.signalCode}, output=${report.appOutput.join(' ') || 'none'})`);
  const context=browser.contexts()[0];
  const page=context.pages()[0] || await context.waitForEvent('page');
