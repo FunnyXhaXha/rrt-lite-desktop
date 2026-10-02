@@ -12,9 +12,27 @@ const ps=(script)=>execFileSync('powershell.exe',['-NoProfile','-Command',script
 const listen=(server)=>new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',()=>resolve(server.address().port));});
 const close=(server)=>new Promise(resolve=>server.close(resolve));
 const reservePort=async()=>{const server=net.createServer();const port=await listen(server);await close(server);return port;};
+const processSnapshot=pid=>{
+ const script=`
+$rootPid = ${pid}
+$all = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,ExecutablePath,SessionId
+$ids = [Collections.Generic.HashSet[uint32]]::new()
+[void]$ids.Add([uint32]$rootPid)
+do {
+  $added = $false
+  foreach ($process in $all) {
+    if ($ids.Contains([uint32]$process.ParentProcessId) -and $ids.Add([uint32]$process.ProcessId)) { $added = $true }
+  }
+} while ($added)
+$root = Get-Process -Id $rootPid -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Responding,SessionId,MainWindowHandle
+$tree = @($all | Where-Object { $ids.Contains([uint32]$_.ProcessId) })
+[pscustomobject]@{ root = $root; processes = $tree } | ConvertTo-Json -Compress -Depth 4
+`;
+ try{return JSON.parse(ps(script));}catch(error){return {error:String(error)};}
+};
 const userData=path.resolve(qaDir,'.webview-data');
 let app,browser,denyProxy;
-const report={startup:false,chinese:false,english:false,languagePreservation:false,nativeClipboard:false,clear:false,preferencePersistence:false,noInputPersistence:false,externalRequests:[],proxyAttempts:[],appOutput:[],networkIsolation:'WebView2 forced through a local deny proxy; no OS firewall or network settings changed'};
+const report={startup:false,chinese:false,english:false,languagePreservation:false,nativeClipboard:false,clear:false,preferencePersistence:false,noInputPersistence:false,externalRequests:[],proxyAttempts:[],appOutput:[],processSnapshots:[],networkIsolation:'WebView2 forced through a local deny proxy; no OS firewall or network settings changed'};
 try{
  await mkdir(userData,{recursive:true});
  denyProxy=net.createServer(socket=>{socket.once('data',data=>report.proxyAttempts.push(data.toString('utf8',0,256).split(/\r?\n/,1)[0]));socket.destroy();});
@@ -36,9 +54,16 @@ try{
  app=spawn(exe,[],{env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:browserArguments,WEBVIEW2_USER_DATA_FOLDER:userData},stdio:['ignore','pipe','pipe']});
  const capture=data=>report.appOutput.push(data.toString('utf8').slice(0,2000));
  app.stdout.on('data',capture);app.stderr.on('data',capture);
- for(let i=0;i<180;i++){if(app.exitCode!==null)break;try{browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);break;}catch{await new Promise(r=>setTimeout(r,1000));}}
+ for(let i=0;i<75;i++){
+  if(app.exitCode!==null)break;
+  if([5,15,30,60].includes(i))report.processSnapshots.push({afterSeconds:i,snapshot:processSnapshot(app.pid)});
+  try{browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);break;}catch{await new Promise(r=>setTimeout(r,1000));}
+ }
  report.startupDurationMs=Date.now()-launchStarted;
- if(!browser)throw Error(`Native WebView2 did not start (exitCode=${app.exitCode}, signal=${app.signalCode}, output=${report.appOutput.join(' ') || 'none'})`);
+ if(!browser){
+  const lastSnapshot=report.processSnapshots.at(-1)?.snapshot;
+  throw Error(`Native WebView2 did not start (exitCode=${app.exitCode}, signal=${app.signalCode}, output=${report.appOutput.join(' ') || 'none'}, processTree=${JSON.stringify(lastSnapshot)})`);
+ }
  const context=browser.contexts()[0];
  const page=context.pages()[0] || await context.waitForEvent('page');
  await page.waitForSelector('#context');report.startup=true;
