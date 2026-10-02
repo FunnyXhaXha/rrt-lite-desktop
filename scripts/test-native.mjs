@@ -1,7 +1,7 @@
 // Runs only in Windows CI/development, never included in the desktop runtime.
 import { chromium } from 'playwright';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -12,9 +12,11 @@ const ps=(script)=>execFileSync('powershell.exe',['-NoProfile','-Command',script
 const listen=(server)=>new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',()=>resolve(server.address().port));});
 const close=(server)=>new Promise(resolve=>server.close(resolve));
 const reservePort=async()=>{const server=net.createServer();const port=await listen(server);await close(server);return port;};
+const userData=path.resolve(qaDir,'.webview-data');
 let app,browser,denyProxy;
-const report={startup:false,chinese:false,english:false,languagePreservation:false,nativeClipboard:false,clear:false,preferencePersistence:false,noInputPersistence:false,externalRequests:[],proxyAttempts:[],networkIsolation:'WebView2 forced through a local deny proxy; no OS firewall or network settings changed'};
+const report={startup:false,chinese:false,english:false,languagePreservation:false,nativeClipboard:false,clear:false,preferencePersistence:false,noInputPersistence:false,externalRequests:[],proxyAttempts:[],appOutput:[],networkIsolation:'WebView2 forced through a local deny proxy; no OS firewall or network settings changed'};
 try{
+ await mkdir(userData,{recursive:true});
  denyProxy=net.createServer(socket=>{socket.once('data',data=>report.proxyAttempts.push(data.toString('utf8',0,256).split(/\r?\n/,1)[0]));socket.destroy();});
  const proxyPort=await listen(denyProxy);
  const debugPort=await reservePort();
@@ -30,9 +32,11 @@ try{
   '--disable-breakpad',
   '--no-first-run'
  ].join(' ');
- app=spawn(exe,[],{env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:browserArguments},stdio:'ignore'});
- for(let i=0;i<60;i++){try{browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);break;}catch{await new Promise(r=>setTimeout(r,1000));}}
- if(!browser)throw Error('Native WebView2 did not start');
+ app=spawn(exe,[],{env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:browserArguments,WEBVIEW2_USER_DATA_FOLDER:userData},stdio:['ignore','pipe','pipe']});
+ const capture=data=>report.appOutput.push(data.toString('utf8').slice(0,2000));
+ app.stdout.on('data',capture);app.stderr.on('data',capture);
+ for(let i=0;i<60;i++){if(app.exitCode!==null)break;try{browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);break;}catch{await new Promise(r=>setTimeout(r,1000));}}
+ if(!browser)throw Error(`Native WebView2 did not start (exitCode=${app.exitCode}, signal=${app.signalCode}, output=${report.appOutput.join(' ') || 'none'})`);
  const context=browser.contexts()[0];
  const page=context.pages()[0] || await context.waitForEvent('page');
  await page.waitForSelector('#context');report.startup=true;
@@ -64,4 +68,6 @@ try{
  if(browser)await browser.close().catch(()=>{});
  if(app?.pid)try{execFileSync('taskkill',['/PID',String(app.pid),'/T','/F']);}catch{}
  if(denyProxy)await close(denyProxy).catch(()=>{});
+ for(let i=0;i<10;i++)try{await rm(userData,{recursive:true,force:true});break;}catch(error){if(i===9)report.cleanupWarning=String(error);else await new Promise(r=>setTimeout(r,250));}
+ await writeFile(path.join(qaDir,reportName),JSON.stringify(report,null,2));
 }
