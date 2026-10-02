@@ -23,7 +23,7 @@ The application does not require a developer environment, account, API key, brow
 - Only language and theme are stored locally. Pasted design text and generated prompts stay in memory and are not saved by the app.
 - Copy is an explicit local clipboard operation. Windows clipboard history/sync and any external AI you choose are controlled by your OS/other software, not by this application.
 - A restrictive Content Security Policy allows only local assets and Tauri's local IPC for clipboard writing. No business-logic network calls exist.
-- Fixed WebView2 avoids an updater service; background-networking and component-update flags are disabled. Native release tests force the renderer through a local deny proxy, fail on any attempted external request, and do not alter the host firewall or network settings.
+- Fixed WebView2 avoids an updater service; background-networking and component-update flags are disabled. The release window has a process-scoped loopback deny proxy, so the app and renderer cannot reach the Internet without changing the host firewall or system network settings.
 - Dependencies and the fixed renderer are downloaded **at build time**, not when someone runs the application.
 
 ## RRT Lite public boundary
@@ -52,7 +52,7 @@ npm run desktop:build
 node scripts/test-native.mjs
 ```
 
-The native test does not require administrator privileges or change Windows Firewall. It launches WebView2 through a process-scoped local deny proxy, exercises the packaged UI and native clipboard, and fails if the page or renderer attempts an external request.
+The native test does not require administrator privileges, remote debugging, or Windows Firewall changes. It exercises the same packaged binary through Windows keyboard automation, verifies the renderer's deny-proxy command line, captures bilingual screenshots, and fails if the app or renderer attempts a proxy connection.
 
 `main` pushes and `v*` tags trigger the Windows build. Normal pushes and manual validation runs retain artifacts without publishing. A `v0.1.0` tag or an explicit `publish_release` workflow input publishes `v0.1.0` only after every verification step passes; an existing release is never overwritten. For a new release version, update app/package/Cargo versions and the release step.
 

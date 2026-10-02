@@ -19,7 +19,9 @@
         "minWidth": 650,
         "minHeight": 600,
         "dragDropEnabled": false,
-        "devtools": false
+        "devtools": false,
+        "proxyUrl": "http://127.0.0.1:65535",
+        "additionalBrowserArgs": "--disable-quic --disable-background-networking --disable-component-update --disable-domain-reliability --disable-breakpad --disable-features=msEdgeShoppingAssistant,msEdgeSidebarV2 --no-first-run"
       }
     ],
     "security": {

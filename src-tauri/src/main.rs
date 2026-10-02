@@ -16,8 +16,6 @@ fn main() {
         let _ = std::process::Command::new("icacls.exe")
             .arg(&runtime).args(["/grant", "*S-1-15-2-1:(OI)(CI)(RX)", "/grant", "*S-1-15-2-2:(OI)(CI)(RX)", "/T", "/Q"])
             .creation_flags(0x08000000).output();
-        let existing = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
-        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", format!("{} --disable-background-networking --disable-component-update --disable-domain-reliability --disable-breakpad --disable-features=msEdgeShoppingAssistant,msEdgeSidebarV2 --no-first-run", existing));
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
