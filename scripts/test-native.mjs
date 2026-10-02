@@ -22,7 +22,7 @@ try{
   `--remote-debugging-port=${debugPort}`,
   '--remote-debugging-address=127.0.0.1',
   `--proxy-server=http://127.0.0.1:${proxyPort}`,
-  '--proxy-bypass-list=<-loopback>',
+  '--proxy-bypass-list=<-loopback>;tauri.localhost;ipc.localhost',
   '--disable-quic',
   '--disable-background-networking',
   '--disable-component-update',
