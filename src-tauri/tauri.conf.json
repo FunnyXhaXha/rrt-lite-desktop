@@ -21,7 +21,7 @@
         "dragDropEnabled": false,
         "devtools": false,
         "proxyUrl": "http://127.0.0.1:65535",
-        "additionalBrowserArgs": "--disable-quic --disable-background-networking --disable-component-update --disable-domain-reliability --disable-breakpad --disable-features=msEdgeShoppingAssistant,msEdgeSidebarV2 --no-first-run"
+        "additionalBrowserArgs": "--proxy-server=http://127.0.0.1:65535 --disable-quic --disable-background-networking --disable-component-update --disable-domain-reliability --disable-breakpad --disable-features=msEdgeShoppingAssistant,msEdgeSidebarV2,msWebOOUI,msPdfOOUI,msSmartScreenProtection --no-first-run"
       }
     ],
     "security": {
